@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turf Owner Profile</title>
+  <!-- Font Awesome CSS -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Leaflet CSS (for the map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- Custom CSS -->
+  <style>
+    .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+
+    .navbar-nav .nav-link {
+      margin-left: 15px;
+      font-size: 1.1rem;
+    }
+
+    .profile-btn img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+    }
+
+    .location-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: #007bff;
+    }
+
+    @media (max-width: 768px) {
+      .navbar-nav {
+        display: none;
+      }
+    }
+
+    .day-checkbox {
+      margin-right: 10px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .image-preview {
+      max-width: 200px;
+      margin-bottom: 10px;
+    }
+
+    .slot-container {
+      position: relative;
+      padding-bottom: 30px;
+    }
+
+    .remove-slot-button {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+
+    #map {
+      height: 400px;
+      width: 100%;
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-light sticky-top">
+    <div class="container">
+      <a class="navbar-brand" href="#">KickSpot</a>
+      <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="#">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Services</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">About</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Contact Us</a></li>
+        </ul>
+      </div>
+      <div class="d-flex align-items-center">
+        <button class="btn profile-btn" type="button" onclick="getLocation()">
+          <img id="user-profile-img" src="https://t3.ftcdn.net/jpg/06/19/26/46/360_F_619264680_x2PBdGLF54sFe7kTBtAvZnPyXgvaRw0Y.jpg" alt="User Profile">
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Turf Details Section -->
+  <div class="container my-5">
+    <h2 class="mb-4">Enter Turf Details</h2>
+    <form id="turf-form" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="status" class="form-label">Turf Status</label>
+        <select id="status" class="form-select" required>
+          <option value="">Select Status</option>
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label for="city" class="form-label">City</label>
+        <input type="text" id="city" class="form-control" placeholder="Enter city" required>
+      </div>
+
+      <!-- Slots Section -->
+      <h3 class="mb-4">Add Slots</h3>
+      <div id="slots-container">
+        <!-- Slots will be added here dynamically -->
+      </div>
+      <div class="mb-3">
+        <button type="button" id="add-slot-button" class="btn btn-secondary">Add Slot</button>
+      </div>
+
+      <h3 class="mb-4">Upload Turf Images</h3>
+      <div id="images-container">
+        <input type="file" id="image1" class="form-control mb-2" accept="image/*" />
+        <input type="file" id="image2" class="form-control mb-2" accept="image/*" />
+        <input type="file" id="image3" class="form-control mb-2" accept="image/*" />
+        <input type="file" id="image4" class="form-control mb-2" accept="image/*" />
+        <input type="file" id="image5" class="form-control mb-2" accept="image/*" />
+      </div>
+      <button type="submit" id="submit-button" class="btn btn-primary">Submit</button>
+      <button type="button" id="update-button" class="btn btn-success d-none">Update</button>
+    </form>
+
+    <!-- Map Section -->
+    <h3 class="mb-4">Turf Location</h3>
+    <div id="map"></div>
+  </div>
+
+  <!-- Bootstrap JS (for responsiveness and toggler) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Leaflet JS (for the map) -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    import { getDatabase, ref, set, get, remove } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAwgq5oTikQJ5WeCGkgpcCSyMwXunAWdrE",
+      authDomain: "turf-2d4a2.firebaseapp.com",
+      projectId: "turf-2d4a2",
+      storageBucket: "turf-2d4a2.appspot.com",
+      messagingSenderId: "1093579163182",
+      appId: "1:1093579163182:web:9e7e98562765c0462f41bf",
+      databaseURL: "https://turf-2d4a2-default-rtdb.firebaseio.com/"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const database = getDatabase(app);
+    const storage = getStorage(app);
+
+    let currentUser = null;
+    let isEditing = false;
+    let slotCount = 0;
+
+    function updateProfile(user) {
+      const navbarImg = document.getElementById('user-profile-img');
+      const photoURL = user?.photoURL || 'https://media.istockphoto.com/id/1495088043/vector/user-profile-icon-avatar-or-person-icon-profile-picture-portrait-symbol-default-portrait.jpg';
+      navbarImg.src = photoURL;
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        currentUser = user;
+        updateProfile(user);
+        loadData(); // Load data on auth state change
+      } else {
+        console.log('No user is signed in.');
+        currentUser = null;
+      }
+    });
+
+    function loadData() {
+      if (currentUser) {
+        const userId = currentUser.uid;
+        const turfRef = ref(database, `ListedTurf/${userId}`);
+        get(turfRef).then((snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            document.getElementById('status').value = data.status || '';
+            document.getElementById('city').value = data.city || '';
+
+            if (data.slots) {
+              loadSlots(data.slots);
+            }
+
+            if (data.images) {
+              loadImages(data.images);
+            }
+
+            // Load map with turf location
+            const latitude = data.latitude || 40.7128; // Default to New York City if not provided
+            const longitude = data.longitude || -74.0060; // Default to New York City if not provided
+            loadMap(latitude, longitude);
+
+            document.getElementById('submit-button').classList.add('d-none');
+            document.getElementById('update-button').classList.remove('d-none');
+            isEditing = true;
+          }
+        }).catch((error) => console.error('Error loading data:', error));
+      }
+    }
+
+    function loadSlots(slots) {
+      const slotsContainer = document.getElementById('slots-container');
+      slotsContainer.innerHTML = ''; // Clear existing slots
+
+      Object.keys(slots).forEach(slotId => {
+        const slot = slots[slotId];
+        const slotContainer = document.createElement('div');
+        slotContainer.className = 'slot-container mb-4';
+        slotContainer.dataset.slotId = slotId;
+        slotContainer.innerHTML = `
+          <div class="mb-3">
+            <label for="slot-day-${slotId}" class="form-label">Day</label>
+            <select id="slot-day-${slotId}" class="form-select" required>
+              <option value="">Select Day</option>
+              <option value="Monday" ${slot.day === 'Monday' ? 'selected' : ''}>Monday</option>
+              <option value="Tuesday" ${slot.day === 'Tuesday' ? 'selected' : ''}>Tuesday</option>
+              <option value="Wednesday" ${slot.day === 'Wednesday' ? 'selected' : ''}>Wednesday</option>
+              <option value="Thursday" ${slot.day === 'Thursday' ? 'selected' : ''}>Thursday</option>
+              <option value="Friday" ${slot.day === 'Friday' ? 'selected' : ''}>Friday</option>
+              <option value="Saturday" ${slot.day === 'Saturday' ? 'selected' : ''}>Saturday</option>
+              <option value="Sunday" ${slot.day === 'Sunday' ? 'selected' : ''}>Sunday</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="slot-start-time-${slotId}" class="form-label">Start Time</label>
+            <input type="time" id="slot-start-time-${slotId}" class="form-control" value="${slot.startTime || ''}" required>
+          </div>
+          <div class="mb-3">
+            <label for="slot-end-time-${slotId}" class="form-label">End Time</label>
+            <input type="time" id="slot-end-time-${slotId}" class="form-control" value="${slot.endTime || ''}" required>
+          </div>
+          <div class="mb-3">
+            <label for="slot-rate-${slotId}" class="form-label">Rate</label>
+            <input type="number" step="0.01" id="slot-rate-${slotId}" class="form-control" value="${slot.rate || ''}" required>
+          </div>
+          <button type="button" class="btn btn-danger remove-slot-button" data-slot-id="${slotId}">Remove Slot</button>
+        `;
+        slotsContainer.appendChild(slotContainer);
+      });
+
+      document.querySelectorAll('.remove-slot-button').forEach(button => {
+        button.addEventListener('click', () => {
+          removeSlot(button.dataset.slotId);
+        });
+      });
+    }
+
+    function loadImages(images) {
+      const imageInputs = document.querySelectorAll('#images-container input[type="file"]');
+      const previews = document.querySelectorAll('#images-container .image-preview');
+      imageInputs.forEach((input, index) => {
+        if (images[index]) {
+          const preview = previews[index] || document.createElement('img');
+          preview.src = images[index];
+          preview.className = 'image-preview';
+          input.parentNode.insertBefore(preview, input);
+          input.dataset.url = images[index];
+        }
+      });
+    }
+
+    function addSlot() {
+      slotCount++;
+      const slotsContainer = document.getElementById('slots-container');
+      const slotId = 'slot-' + slotCount;
+
+      const slotContainer = document.createElement('div');
+      slotContainer.className = 'slot-container mb-4';
+      slotContainer.dataset.slotId = slotId;
+      slotContainer.innerHTML = `
+        <div class="mb-3">
+          <label for="slot-day-${slotId}" class="form-label">Day</label>
+          <select id="slot-day-${slotId}" class="form-select" required>
+            <option value="">Select Day</option>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="slot-start-time-${slotId}" class="form-label">Start Time</label>
+          <input type="time" id="slot-start-time-${slotId}" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label for="slot-end-time-${slotId}" class="form-label">End Time</label>
+          <input type="time" id="slot-end-time-${slotId}" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label for="slot-rate-${slotId}" class="form-label">Rate</label>
+          <input type="number" step="0.01" id="slot-rate-${slotId}" class="form-control" required>
+        </div>
+        <button type="button" class="btn btn-danger remove-slot-button" data-slot-id="${slotId}">Remove Slot</button>
+      `;
+      slotsContainer.appendChild(slotContainer);
+
+      document.querySelector(`.remove-slot-button[data-slot-id="${slotId}"]`).addEventListener('click', () => {
+        removeSlot(slotId);
+      });
+    }
+
+    async function uploadImages() {
+      const imageUrls = [];
+      const imageInputs = document.querySelectorAll('#images-container input[type="file"]');
+      for (const imageInput of imageInputs) {
+        if (imageInput.files.length > 0) {
+          const file = imageInput.files[0];
+          const storageReference = storageRef(storage, `images/${currentUser.uid}/${file.name}`);
+          await uploadBytes(storageReference, file);
+          const url = await getDownloadURL(storageReference);
+          imageUrls.push(url);
+        }
+      }
+
+      // Hide image upload fields after upload
+      document.getElementById('images-container').classList.add('hidden');
+      
+      return imageUrls;
+    }
+
+    async function saveTurfDetails(images) {
+      if (currentUser) {
+        const userId = currentUser.uid;
+        const status = document.getElementById('status').value;
+        const city = document.getElementById('city').value;
+        const latitude = 40.7128; // Default latitude
+        const longitude = -74.0060; // Default longitude
+
+        const slots = {};
+        document.querySelectorAll('#slots-container .slot-container').forEach((slotContainer) => {
+          const slotId = slotContainer.dataset.slotId;
+          slots[slotId] = {
+            day: document.getElementById(`slot-day-${slotId}`).value,
+            startTime: formatTime(document.getElementById(`slot-start-time-${slotId}`).value),
+            endTime: formatTime(document.getElementById(`slot-end-time-${slotId}`).value),
+            rate: parseFloat(document.getElementById(`slot-rate-${slotId}`).value),
+            isBooked: false,
+            bookedBy: null,
+            bookingTime: null
+          };
+        });
+
+        const turfRef = ref(database, `ListedTurf/${userId}`);
+        await set(turfRef, {
+          status: status,
+          city: city,
+          latitude: latitude,
+          longitude: longitude,
+          slots: slots,
+          images: images
+        });
+
+        alert('Turf details saved successfully!');
+      }
+    }
+
+    function formatTime(time) {
+      if (!time) return '';
+      const [hours, minutes] = time.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const adjustedHours = hours % 12 || 12;
+      return `${adjustedHours}:${minutes < 10 ? '0' : ''}${minutes} ${period}`;
+    }
+
+    function removeSlot(slotId) {
+      const slotContainer = document.querySelector(`.slot-container[data-slot-id="${slotId}"]`);
+      if (slotContainer) {
+        slotContainer.remove();
+        if (currentUser) {
+          const slotRef = ref(database, `ListedTurf/${currentUser.uid}/slots/${slotId}`);
+          remove(slotRef).catch(error => console.error('Error removing slot:', error));
+        }
+      }
+    }
+
+    function loadMap(lat, lon) {
+      const map = L.map('map').setView([lat, lon], 13);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+
+      L.marker([lat, lon]).addTo(map)
+        .bindPopup('Turf Location')
+        .openPopup();
+    }
+
+    document.getElementById('turf-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const images = await uploadImages();
+      await saveTurfDetails(images);
+    });
+
+    document.getElementById('add-slot-button').addEventListener('click', addSlot);
+
+    document.getElementById('update-button').addEventListener('click', async () => {
+      const images = await uploadImages();
+      await saveTurfDetails(images);
+    });
+
+    // Initialize map with default location
+    loadMap(40.7128, -74.0060); // Default location for map
+  </script>
+</body>
+</html>
